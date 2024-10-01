@@ -41,9 +41,10 @@ __device__ T warp_inclusive_scan(const T x){
 }
 
 template<typename T, unsigned NT, unsigned VT>
-__device__ void global_to_shared(const T * global, T * shared){
+__device__ void global_to_shared(const unsigned total, const T * global, T * shared){
+    constexpr unsigned NV = NT * VT;
     #pragma unroll
-    for (i = 0; i < VT; i++){
+    for (int i = 0; i < VT; i++){
         const unsigned global_index = NV * blockIdx.x + NT * i + threadIdx.x;
         const unsigned shared_index = NT * i + threadIdx.x;
         shared[shared_index] = (global_index < total) ? global[global_index] : 0;
@@ -60,12 +61,13 @@ __device__ void shared_to_registers(const T * shared, T * registers){
 }
 
 template<typename T, unsigned NT, unsigned VT>
-__device__ void shared_to_global(const T * global, T * shared){
+__device__ void shared_to_global(const unsigned total, const T * global, T * shared){
+    constexpr unsigned NV = NT * VT;
     #pragma unroll
     for (int i = 0; i < VT; i++){
         const unsigned global_index = NV * blockIdx.x + NT * i + threadIdx.x;
         const unsigned shared_index = NT * i + threadIdx.x;
-        if (global_index < total) output[global_index] = shared_values[shared_index];
+        if (global_index < total) global[global_index] = shared[shared_index];
     }
 }
 
@@ -85,7 +87,7 @@ __device__ void linear_scan(T * values){
     }    
 }
 
-template<typename T, NT>
+template<typename T, unsigned NT>
 __device__ void cta_upsweep(const T x, T * shared_values, T * spine){
     T warp_scanned = warp_inclusive_scan(x);
 
@@ -100,7 +102,7 @@ __device__ void cta_upsweep(const T x, T * shared_values, T * spine){
     if (last_thread) spine[NT] = shared_values[threadIdx.x];
 }
 
-template<typename T, VT>
+template<typename T, unsigned VT>
 __device__ void cta_downsweep(T * shared_values, T * values){
     const T downsweep = (threadIdx.x > 0) ? shared_values[threadIdx.x - 1] : 0;
     #pragma unroll
