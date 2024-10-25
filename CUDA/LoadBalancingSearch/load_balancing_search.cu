@@ -79,13 +79,6 @@ void print_if_mismatch(std::vector<T>& CPU, std::vector<T>& GPU, unsigned limit)
     }
 }
 
-__device__ unsigned int laneid()
-{
-    unsigned int laneid;
-    asm ("mov.u32 %0, %%laneid;" : "=r"(laneid));
-    return laneid;
-}
-
 template<typename T, unsigned NT, unsigned VT>
 __device__ void global_to_shared(const unsigned total, const T * global, T * shared){
     constexpr unsigned NV = NT * VT;

@@ -47,7 +47,7 @@ float benchmark(
     cudaEventCreate(&stop);
 
     cudaEventRecord(start);
-    for (unsigned i = 0; i < repetitions, i++){
+    for (unsigned i = 0; i < repetitions; i++){
         process();
     }
     cudaEventRecord(stop);
@@ -55,6 +55,7 @@ float benchmark(
     postprocess();
 
     cudaEventSynchronize(stop);
+
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
 
@@ -255,7 +256,7 @@ void scan(
     T * dev_output;
     std::vector <T*> dev_spines(number_of_sweeps);
 
-    auto preprocess = [&dev_input, &dev_output, &dev_spines, &number_of_blocks](){
+    auto preprocess = [number_of_sweeps=number_of_sweeps, number_of_elements=number_of_elements, &dev_input, &dev_output, &dev_spines, &number_of_blocks, &host_input](){
         CUDA_CALL(cudaSetDevice(0));
         CUDA_CALL(cudaMalloc(&dev_input, number_of_elements * sizeof(T)));
         CUDA_CALL(cudaMalloc(&dev_output, (number_of_elements + 1) * sizeof(T)));
@@ -263,7 +264,7 @@ void scan(
             CUDA_CALL(cudaMalloc(&(dev_spines[i]), number_of_blocks[i] * sizeof(T)));
         }
         CUDA_CALL(cudaMemcpy(dev_input, host_input.data(), number_of_elements * sizeof(T), cudaMemcpyHostToDevice));
-    }
+    };
 
     auto process = [number_of_sweeps=number_of_sweeps, number_of_elements=number_of_elements, &dev_input, &dev_spines, &dev_output, &number_of_blocks](){
         if (number_of_sweeps > 0) {
@@ -314,34 +315,37 @@ void scan(
                 dev_output + number_of_elements
             );
         }
-    }
+    };
 
-    auto postprocess = [&dev_input, &dev_output, &dev_spines, &host_output] (){
+    auto postprocess = [number_of_elements=number_of_elements, &dev_input, &dev_output, &dev_spines, &host_output] (){
         CUDA_CALL(cudaMemcpy(host_output.data(), dev_output, (number_of_elements + 1) * sizeof(T), cudaMemcpyDeviceToHost));
         CUDA_CALL(cudaFree(dev_input));
         CUDA_CALL(cudaFree(dev_output));
         for (unsigned i = 0; i < dev_spines.size(); i++){
             CUDA_CALL(cudaFree(dev_spines[i]));
         }
-    }
+    };
 
-    float timing = benchmark(preprocess, process, postprocess, 100);
-    printf("Number of elements: %u, Timing (ms): %.3f", number_of_elements, timing);
+    constexpr unsigned repetitions = 1000;
+    float timing = benchmark(preprocess, process, postprocess, repetitions);
+    float seconds = timing / 1000;
+    float elements_per_second = 1e-9 * static_cast<float>(repetitions) * number_of_elements / seconds;
+    float bandwidth = elements_per_second * sizeof(T);
+
+    printf("Number of elements: %u, Timing (ms): %.3f, Billions of elements per second: %.2f, Bandwidth (GB/s): %.0f\n", number_of_elements, timing, elements_per_second, bandwidth);
 }
 
 int main(int argc, char** argv) {
     std::mt19937 gen(1234);
     std::uniform_int_distribution<> prefix_sum_distribution(0, 32);
 
-    constexpr unsigned NT = 512;
-    constexpr unsigned VT = 3;
-
-    std::vector<unsigned> input_size = 
+    constexpr unsigned NT = 256;
+    constexpr unsigned VT = 4;
 
     // constexpr std::array<unsigned, 4> NT_values = { 128, 256, 512, 1024 };
     // constexpr std::array<unsigned, 8> VT_values = { 1, 2, 3, 4, 5, 6, 7, 8 };
 
-    constexpr std::array<unsigned> number_of_inputs = {
+    const std::array<unsigned, 17> number_of_inputs{
         1024,
         2048,
         4096,
@@ -357,10 +361,11 @@ int main(int argc, char** argv) {
         4194304,
         8388608,
         16777216,
-        33554432
+        33554432,
+        67108864
     };
 
-    constexpr unsigned max_size = 33554432;
+    constexpr unsigned max_size = 67108864;
     std::vector<unsigned> host_input(max_size);
     std::vector<unsigned> host_output(max_size + 1);
     std::vector<unsigned> host_cpu_output(max_size);

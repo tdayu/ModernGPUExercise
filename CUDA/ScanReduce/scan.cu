@@ -1,37 +1,9 @@
-#include <random>
+#include <random>s
 #include <iostream>
 #include <cuda_runtime.h>
 #include <vector>
 #include <array>
 #include <assert.h>
-
-#define CUDA_CALL(x) {\
-    const cudaError_t a=(x);\
-    if(a != cudaSuccess) {\
-        printf(\
-            "\nerror in line:%d CUDAError:%s(err_num=%d)\n",\
-            __LINE__,\
-            cudaGetErrorString(a),\
-            a);\
-        cudaDeviceReset();\
-        assert(0);\
-    }\
-}
-
-#define FULL_MASK 0xFFFFFFFF
-#define WARP_SIZE 32
-
-enum ScanType {
-    Exclusive,
-    Inclusive
-};
-
-__device__ unsigned int laneid()
-{
-    unsigned int laneid;
-    asm ("mov.u32 %0, %%laneid;" : "=r"(laneid));
-    return laneid;
-}
 
 template<typename T>
 __device__ T warp_inclusive_scan(const T x, const unsigned mask = FULL_MASK, const int width = 32){
@@ -45,82 +17,12 @@ __device__ T warp_inclusive_scan(const T x, const unsigned mask = FULL_MASK, con
     return scan;
 }
 
-template<typename T, unsigned NT, unsigned VT>
-__device__ void global_to_shared(const unsigned total, const T * global, T * shared){
-    constexpr unsigned NV = NT * VT;
-    #pragma unroll
-    for (int i = 0; i < VT; i++){
-        const unsigned global_index = NV * blockIdx.x + NT * i + threadIdx.x;
-        const unsigned shared_index = NT * i + threadIdx.x;
-        shared[shared_index] = (global_index < total) ? global[global_index] : 0;
-    }
-    __syncthreads();
-}
-
-template<typename T, unsigned VT>
-__device__ void shared_to_registers(const T * shared, T * registers){
-    #pragma unroll
-    for (int i = 0; i < VT; i++){
-        registers[i] = shared[VT * threadIdx.x + i];
-    }
-}
-
-template<typename T, unsigned NT, unsigned VT>
-__device__ void shared_to_global(const unsigned total, T * global, T * shared){
-    constexpr unsigned NV = NT * VT;
-    #pragma unroll
-    for (int i = 0; i < VT; i++){
-        const unsigned global_index = NV * blockIdx.x + NT * i + threadIdx.x;
-        const unsigned shared_index = NT * i + threadIdx.x;
-        if (global_index < total) global[global_index] = shared[shared_index];
-    }
-}
-
-template<typename T, unsigned VT>
-__device__ void registers_to_shared(T * shared, const T * registers){
-    #pragma unroll
-    for (int i = 0; i < VT; i++){
-        shared[VT * threadIdx.x + i] = registers[i];
-    }
-    __syncthreads();
-}
-
 template<typename T, unsigned VT>
 __device__ void linear_scan(T * values){
     #pragma unroll
     for (int i = 1; i < VT; i++){
         values[i] += values[i-1];
     }    
-}
-
-template<typename T, unsigned NT>
-__device__ void cta_upsweep(const T x, T * shared_values, T * spine){
-    T warp_scanned = warp_inclusive_scan(x);
-
-    // Scan the warp sums
-    __syncthreads();
-    if (laneid() == WARP_SIZE - 1) shared_values[threadIdx.x / 32] = warp_scanned;
-    __syncthreads();
-
-    constexpr unsigned warp_spine_size = ( NT + WARP_SIZE - 1 ) / WARP_SIZE;
-    static_assert( warp_spine_size <= 32 );
-
-    const bool predicate = threadIdx.x < warp_spine_size;
-    const unsigned mask = __ballot_sync(FULL_MASK, predicate);
-    if (predicate){
-        T spine_scanned = shared_values[threadIdx.x];
-        spine_scanned = warp_inclusive_scan(spine_scanned, mask, warp_spine_size);
-        shared_values[threadIdx.x + 1] = spine_scanned;
-        if (threadIdx.x == 0) shared_values[0] = 0;
-        if (spine != nullptr && threadIdx.x == (warp_spine_size - 1)) spine[blockIdx.x] = spine_scanned;
-    }
-    __syncthreads();
-
-    T upsweep = warp_scanned + shared_values[threadIdx.x / 32];
-    __syncthreads();
-
-    shared_values[threadIdx.x + 1] = upsweep;
-    __syncthreads();
 }
 
 template<typename T, unsigned NT>
@@ -138,23 +40,6 @@ __device__ void cta_shared_upsweep(const T x, T * shared_values, T * spine){
 
     const bool last_thread = (threadIdx.x == NT - 1);
     if (last_thread) spine[blockIdx.x] = shared_values[threadIdx.x];
-}
-
-template<typename T, unsigned VT, ScanType type>
-__device__ void cta_downsweep(T * shared_values, T * values){
-    if constexpr (type == ScanType::Exclusive) {
-        #pragma unroll
-        for (int i = VT - 1; i > 0; i--){
-            values[i] = values[i - 1];
-        }
-        values[0] = 0;
-    }
-
-    #pragma unroll
-    for (int i = 0; i < VT; i++){
-        values[i] += shared_values[threadIdx.x];
-    }
-    __syncthreads();
 }
 
 // NT = number of threads
