@@ -1,4 +1,5 @@
-#include <scan.cuh>
+#include <scanV1.cuh>
+#include <scanV2.cuh>
 #include <benchmark.cuh>
 #include <random>
 #include <array>
@@ -7,9 +8,10 @@
 // NT = number of threads
 // VT = values per thread
 // NV = number of values per block
-template <typename T, unsigned NT, unsigned VT>
+template <typename T, typename F, unsigned NT, unsigned VT>
 void benchmark_scan(
     const std::vector<T> host_input,
+    F launch_kernels_function,
     const unsigned number_of_elements,
     std::vector<T>& host_output)
 {
@@ -39,7 +41,7 @@ void benchmark_scan(
     };
 
     auto process = [number_of_sweeps=number_of_sweeps, number_of_elements=number_of_elements, &dev_input, &dev_spines, &dev_output, &number_of_blocks](){
-        Scan::launch_kernels<T, NT, VT>(
+        launch_kernels_function<T, NT, VT>(
           dev_input,
           number_of_elements,
           number_of_sweeps,
@@ -100,8 +102,13 @@ int main(int argc, char** argv) {
         host_input[i] = prefix_sum_distribution(gen);
     }
 
+
     for (auto number_of_elements : number_of_inputs){
-        benchmark_scan<unsigned, NT, VT>(host_input, number_of_elements, host_output);
+        benchmark_scan<unsigned, NT, VT>(host_input, ScanV1::launch_kernels, number_of_elements, host_output);
+    }
+
+    for (auto number_of_elements : number_of_inputs){
+        benchmark_scan<unsigned, NT, VT>(host_input, ScanV2::launch_kernels, number_of_elements, host_output);
     }
 
     // // for (size_t i = 0; i < number_of_elements; i += NT * VT){
