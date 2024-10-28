@@ -4,6 +4,8 @@
 #include "memory.cuh"
 #include "common.cuh"
 
+#include <vector>
+
 namespace Scan {
   enum ScanType {
     Exclusive,
@@ -47,7 +49,7 @@ namespace Scan {
       static_assert( warp_spine_size <= 32 );
 
       const bool predicate = threadIdx.x < warp_spine_size;
-      const unsigned mask = __ballot_sync(FULL_MASK, predicate);
+      const unsigned mask = __ballot_sync(Warp::full_mask, predicate);
       if (predicate){
         T spine_scanned = shared_values[threadIdx.x];
         spine_scanned = warp_scan<T, ScanType::Inclusive>(spine_scanned, mask, warp_spine_size);
@@ -210,7 +212,7 @@ namespace Scan {
 
     CUDA_CALL(cudaMemcpy(dev_output, host_input.data(), number_of_elements * sizeof(T), cudaMemcpyHostToDevice));
 
-    launch_kernels(
+    launch_kernels<T, NT, VT>(
       dev_output,
       number_of_elements,
       number_of_sweeps,

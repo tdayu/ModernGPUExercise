@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
     const size_t number_of_elements = (argc > 1) ? std::stol(argv[1]) : 1024 * 1024 * 16;
     std::vector<unsigned> host_input(number_of_elements);
     std::vector<unsigned> host_output(number_of_elements + 1);
-    std::vector<unsigned> host_cpu_output(number_of_elements);
+    std::vector<unsigned> host_cpu_output(number_of_elements + 1);
 
     for (size_t i = 0; i < number_of_elements; i++){
         host_input[i] = prefix_sum_distribution(gen);
@@ -23,6 +23,7 @@ int main(int argc, char** argv) {
 
     Scan::scan<unsigned, NT, VT>(host_input, number_of_elements, host_output);
     std::exclusive_scan(host_input.begin(), host_input.end(), host_cpu_output.begin(), 0);
+    host_cpu_output[number_of_elements] = host_cpu_output[number_of_elements - 1] + host_input[number_of_elements - 1];
 
     print_comparison(host_cpu_output, host_output, 10, 200);
     print_if_mismatch(host_cpu_output, host_output, 100);

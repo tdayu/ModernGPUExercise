@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <iostream>
+#include <stdio.h>
 
 template<typename T>
 void print_array(std::vector<T>& input, unsigned elements_per_row, unsigned limit) {

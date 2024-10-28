@@ -1,5 +1,9 @@
 #pragma once
 
+#include <stdio.h>
+#include <cuda_runtime.h>
+#include <assert.h>
+
 #define CUDA_CALL(x) {\
     const cudaError_t a=(x);\
     if(a != cudaSuccess) {\

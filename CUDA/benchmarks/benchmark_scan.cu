@@ -1,4 +1,8 @@
 #include <scan.cuh>
+#include <benchmark.cuh>
+#include <random>
+#include <array>
+
 
 // NT = number of threads
 // VT = values per thread
@@ -35,7 +39,7 @@ void benchmark_scan(
     };
 
     auto process = [number_of_sweeps=number_of_sweeps, number_of_elements=number_of_elements, &dev_input, &dev_spines, &dev_output, &number_of_blocks](){
-        Scan::launch_kernels(
+        Scan::launch_kernels<T, NT, VT>(
           dev_input,
           number_of_elements,
           number_of_sweeps,
@@ -54,7 +58,7 @@ void benchmark_scan(
     };
 
     constexpr unsigned repetitions = 1000;
-    float timing = benchmark(preprocess, process, postprocess, repetitions);
+    float timing = Benchmark::benchmark(preprocess, process, postprocess, repetitions);
     float seconds = timing / 1000;
     float elements_per_second = 1e-9 * static_cast<float>(repetitions) * number_of_elements / seconds;
     float bandwidth = elements_per_second * sizeof(T);
